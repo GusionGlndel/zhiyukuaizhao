@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>治愈快照</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, canvas { width: 100%; height: 100%; overflow: hidden; }
+    body { background: #667eea; }
+    #imageContainer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
+    #imageContainer img { width: 100%; height: 100%; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+const TITLES = ['🌅 日落余晖', '🏔️ 雪山之巅', '🌊 碧海蓝天', '🌲 森林小径', '🌺 花海春色', '🌙 星空月夜', '🌈 雨后彩虹', '❄️ 冬日雪景', '🌻 金色麦浪', '🍃 溪流潺潺'];
+const USERS = ['阳光使者', '温暖人间', '治愈达人', '快乐源泉', '心灵驿站', '幸福港湾', '美好时光', '温馨小窝', '甜蜜生活', '梦想家园'];
+const IMAGE_URLS = [
+  'https://picsum.photos/seed/sunset/800/1200',
+  'https://picsum.photos/seed/mountain/800/1200',
+  'https://picsum.photos/seed/ocean/800/1200',
+  'https://picsum.photos/seed/forest/800/1200',
+  'https://picsum.photos/seed/flowers/800/1200',
+  'https://picsum.photos/seed/stars/800/1200',
+  'https://picsum.photos/seed/rainbow/800/1200',
+  'https://picsum.photos/seed/snow/800/1200',
+  'https://picsum.photos/seed/wheat/800/1200',
+  'https://picsum.photos/seed/stream/800/1200'
+];
+
+const DEFAULT_IMAGES = [
+  { title: TITLES[0], imageUrl: IMAGE_URLS[0], likes: 120, user: USERS[0], id: 1, loaded: false, img: null, isDefault: true },
+  { title: TITLES[1], imageUrl: IMAGE_URLS[1], likes: 89, user: USERS[1], id: 2, loaded: false, img: null, isDefault: true },
+  { title: TITLES[2], imageUrl: IMAGE_URLS[2], likes: 156, user: USERS[2], id: 3, loaded: false, img: null, isDefault: true },
+  { title: TITLES[3], imageUrl: IMAGE_URLS[3], likes: 203, user: USERS[3], id: 4, loaded: false, img: null, isDefault: true },
+  { title: TITLES[4], imageUrl: IMAGE_URLS[4], likes: 178, user: USERS[4], id: 5, loaded: false, img: null, isDefault: true }
+];
+
+let images = loadImagesFromStorage();
+
+let currentIndex = 0;
+let currentPage = 'splash';
+let canvas, ctx, canvasWidth, canvasHeight;
+let touchStartX = 0;
+let touchStartY = 0;
+let splashBackground = null;
+
+function loadImagesFromStorage() {
+  try {
+    const saved = localStorage.getItem('healing_images');
+    if (saved) {
+      const savedImages = JSON.parse(saved);
+      return savedImages.map(img => ({ ...img, loaded: false, img: null }));
+    }
+  } catch (e) {
+    console.error('Failed to load images from storage:', e);
+  }
+  return [...DEFAULT_IMAGES];
+}
+
+function saveImagesToStorage() {
+  try {
+    const imagesToSave = images.map(img => ({
+      title: img.title,
+      imageUrl: img.imageUrl,
+      likes: img.likes,
+      user: img.user,
+      id: img.id,
+      isDefault: img.isDefault || false
+    }));
+    localStorage.setItem('healing_images', JSON.stringify(imagesToSave));
+  } catch (e) {
+    console.error('Failed to save images to storage:', e);
+  }
+}
+
+function initApp() {
+  canvas = document.getElementById('gameCanvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  canvas.addEventListener('touchstart', handleTouchStart);
+  canvas.addEventListener('touchend', handleTouchEnd);
+  canvas.addEventListener('click', handleClick);
+  
+  loadSplashBackground();
+  preloadImages();
+}
+
+function loadSplashBackground() {
+  splashBackground = new Image();
+  splashBackground.crossOrigin = 'anonymous';
+  splashBackground.onload = function() {
+    drawSplashScreen();
+  };
+  splashBackground.onerror = function() {
+    drawSplashScreen();
+  };
+  splashBackground.src = 'https://picsum.photos/seed/healing/1200/1920';
+}
+
+function preloadImages() {
+  images.forEach((imgData, index) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+      images[index].loaded = true;
+      images[index].img = img;
+      if (currentPage === 'home' && currentIndex === index) {
+        drawHomeScreen();
+      }
+    };
+    img.onerror = function() {
+      images[index].loaded = true;
+      if (currentPage === 'home' && currentIndex === index) {
+        drawHomeScreen();
+      }
+    };
+    img.src = imgData.imageUrl;
+  });
+}
+
+function resizeCanvas() {
+  canvasWidth = window.innerWidth;
+  canvasHeight = window.innerHeight;
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+}
+
+function drawSplashScreen() {
+  if (splashBackground && splashBackground.complete) {
+    ctx.drawImage(splashBackground, 0, 0, canvasWidth, canvasHeight);
+    ctx.fillStyle = 'rgba(102, 126, 234, 0.7)';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  } else {
+    const gradient = ctx.createRadialGradient(canvasWidth/2, canvasHeight/2, 0, canvasWidth/2, canvasHeight/2, canvasWidth);
+    gradient.addColorStop(0, '#8B5CF6');
+    gradient.addColorStop(1, '#667eea');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  }
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold ' + Math.min(canvasWidth * 0.12, 60) + 'px Arial';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+  ctx.shadowBlur = 10;
+  ctx.fillText('治愈快照', canvasWidth / 2, canvasHeight / 2 - 60);
+  ctx.shadowBlur = 0;
+  
+  ctx.font = Math.min(canvasWidth * 0.05, 24) + 'px Arial';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.fillText('治愈瞬间图片分享', canvasWidth / 2, canvasHeight / 2 - 10);
+  
+  const btnWidth = Math.min(canvasWidth * 0.6, 240);
+  const btnHeight = 50;
+  const btnX = (canvasWidth - btnWidth) / 2;
+  const btnY = canvasHeight / 2 + 50;
+  
+  const btnGradient = ctx.createLinearGradient(btnX, btnY, btnX, btnY + btnHeight);
+  btnGradient.addColorStop(0, '#ffffff');
+  btnGradient.addColorStop(1, '#f0f0f0');
+  ctx.fillStyle = btnGradient;
+  ctx.beginPath();
+  ctx.roundRect(btnX, btnY, btnWidth, btnHeight, 25);
+  ctx.fill();
+  
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  
+  ctx.fillStyle = '#667eea';
+  ctx.font = 'bold ' + Math.min(canvasWidth * 0.05, 22) + 'px Arial';
+  ctx.fillText('开始探索', canvasWidth / 2, btnY + btnHeight / 2 + 7);
+}
+
+function drawHomeScreen() {
+  ctx.fillStyle = '#f5f5f5';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  
+  const headerGradient = ctx.createLinearGradient(0, 0, 0, 60);
+  headerGradient.addColorStop(0, '#667eea');
+  headerGradient.addColorStop(1, '#5a6fd6');
+  ctx.fillStyle = headerGradient;
+  ctx.fillRect(0, 0, canvasWidth, 60);
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold ' + Math.min(canvasWidth * 0.06, 24) + 'px Arial';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+  ctx.shadowBlur = 3;
+  ctx.fillText('治愈快照', canvasWidth / 2, 40);
+  ctx.shadowBlur = 0;
+  
+  const backBtnX = 10, backBtnY = 10, backBtnWidth = 60, backBtnHeight = 40;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.beginPath();
+  ctx.roundRect(backBtnX, backBtnY, backBtnWidth, backBtnHeight, 20);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 20px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('←', backBtnX + 22, backBtnY + 28);
+  
+  const img = images[currentIndex];
+  const imgWidth = canvasWidth - 30;
+  const imgHeight = canvasHeight * 0.55;
+  const imgX = 15;
+  const imgY = 80;
+  
+  ctx.fillStyle = '#e0e0e0';
+  ctx.beginPath();
+  ctx.roundRect(imgX, imgY, imgWidth, imgHeight, 15);
+  ctx.fill();
+  
+  if (img.loaded && img.img) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(imgX, imgY, imgWidth, imgHeight, 15);
+    ctx.clip();
+    ctx.drawImage(img.img, imgX, imgY, imgWidth, imgHeight);
+    ctx.restore();
+  } else {
+    const colors = ['#4CAF50', '#2196F3', '#FFC107', '#E91E63', '#9C27B0'];
+    ctx.fillStyle = colors[currentIndex % colors.length];
+    ctx.beginPath();
+    ctx.roundRect(imgX, imgY, imgWidth, imgHeight, 15);
+    ctx.fill();
+  }
+  
+  ctx.fillStyle = '#ffffff';
+  ctx.font = Math.min(canvasWidth * 0.04, 18) + 'px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText(img.user, imgX + 15, imgY + imgHeight + 30);
+  
+  ctx.fillStyle = '#ff4757';
+  ctx.textAlign = 'right';
+  ctx.fillText('❤️ ' + img.likes, imgX + imgWidth - 15, imgY + imgHeight + 30);
+  
+  const btnHeight = 45, btnGap = 10;
+  const btnWidth = (canvasWidth - 3 * btnGap) / 3;
+  const uploadBtnX = 15, uploadBtnY = canvasHeight - 70;
+  const prevBtnX = uploadBtnX + btnWidth + btnGap;
+  const nextBtnX = prevBtnX + btnWidth + btnGap;
+  
+  const uploadGradient = ctx.createLinearGradient(uploadBtnX, uploadBtnY, uploadBtnX, uploadBtnY + btnHeight);
+  uploadGradient.addColorStop(0, '#ff6b6b');
+  uploadGradient.addColorStop(1, '#ee5a5a');
+  ctx.fillStyle = uploadGradient;
+  ctx.beginPath();
+  ctx.roundRect(uploadBtnX, uploadBtnY, btnWidth, btnHeight, 22);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold ' + Math.min(canvasWidth * 0.04, 18) + 'px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('上传', uploadBtnX + btnWidth / 2, uploadBtnY + btnHeight / 2 + 6);
+  
+  const btnGradient = ctx.createLinearGradient(prevBtnX, uploadBtnY, prevBtnX, uploadBtnY + btnHeight);
+  btnGradient.addColorStop(0, '#667eea');
+  btnGradient.addColorStop(1, '#5a6fd6');
+  ctx.fillStyle = btnGradient;
+  ctx.beginPath();
+  ctx.roundRect(prevBtnX, uploadBtnY, btnWidth, btnHeight, 22);
+  ctx.fill();
+  ctx.fillText('上一张', prevBtnX + btnWidth / 2, uploadBtnY + btnHeight / 2 + 6);
+  
+  ctx.fillStyle = btnGradient;
+  ctx.beginPath();
+  ctx.roundRect(nextBtnX, uploadBtnY, btnWidth, btnHeight, 22);
+  ctx.fill();
+  ctx.fillText('下一张', nextBtnX + btnWidth / 2, uploadBtnY + btnHeight / 2 + 6);
+}
+
+function handleTouchStart(e) {
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+}
+
+function handleTouchEnd(e) {
+  const touch = e.changedTouches[0];
+  const deltaX = touch.clientX - touchStartX;
+  const deltaY = touch.clientY - touchStartY;
+  
+  if (Math.abs(deltaX) > 50 && Math.abs(deltaX) > Math.abs(deltaY) && currentPage === 'home') {
+    deltaX > 0 ? prevImage() : nextImage();
+  }
+}
+
+function handleClick(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  
+  if (currentPage === 'splash') {
+    const btnWidth = Math.min(canvasWidth * 0.6, 240);
+    const btnHeight = 50;
+    const btnX = (canvasWidth - btnWidth) / 2;
+    const btnY = canvasHeight / 2 + 50;
+    
+    if (x >= btnX && x <= btnX + btnWidth && y >= btnY && y <= btnY + btnHeight) {
+      currentPage = 'home';
+      drawHomeScreen();
+    }
+  } else if (currentPage === 'home') {
+    if (x >= 10 && x <= 70 && y >= 10 && y <= 50) {
+      currentPage = 'splash';
+      drawSplashScreen();
+      return;
+    }
+    
+    const btnHeight = 45, btnGap = 10;
+    const btnWidth = (canvasWidth - 3 * btnGap) / 3;
+    const uploadBtnX = 15, uploadBtnY = canvasHeight - 70;
+    const prevBtnX = uploadBtnX + btnWidth + btnGap;
+    const nextBtnX = prevBtnX + btnWidth + btnGap;
+    
+    if (x >= uploadBtnX && x <= uploadBtnX + btnWidth && y >= uploadBtnY && y <= uploadBtnY + btnHeight) {
+      handleUpload();
+    } else if (x >= prevBtnX && x <= prevBtnX + btnWidth && y >= uploadBtnY && y <= uploadBtnY + btnHeight) {
+      prevImage();
+    } else if (x >= nextBtnX && x <= nextBtnX + btnWidth && y >= uploadBtnY && y <= uploadBtnY + btnHeight) {
+      nextImage();
+    }
+  }
+}
+
+function prevImage() {
+  currentIndex = (currentIndex - 1 + images.length) % images.length;
+  drawHomeScreen();
+}
+
+function nextImage() {
+  currentIndex = (currentIndex + 1) % images.length;
+  drawHomeScreen();
+}
+
+function handleUpload() {
+  const menuContainer = document.createElement('div');
+  menuContainer.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    z-index: 9999;
+  `;
+  
+  const menu = document.createElement('div');
+  menu.style.cssText = `
+    background: #fff;
+    width: 100%;
+    border-radius: 16px 16px 0 0;
+    padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  `;
+  
+  const title = document.createElement('p');
+  title.textContent = '选择图片来源';
+  title.style.cssText = `
+    text-align: center;
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 16px;
+  `;
+  menu.appendChild(title);
+  
+  const btnContainer = document.createElement('div');
+  btnContainer.style.cssText = 'display: flex; gap: 15px;';
+  
+  const albumBtn = document.createElement('button');
+  albumBtn.textContent = '从相册选择';
+  albumBtn.style.cssText = `
+    flex: 1;
+    height: 45px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border: none;
+    border-radius: 22px;
+    font-size: 16px;
+    font-weight: bold;
+  `;
+  albumBtn.addEventListener('click', function() {
+    selectImage(false);
+    menuContainer.remove();
+  });
+  btnContainer.appendChild(albumBtn);
+  
+  const cameraBtn = document.createElement('button');
+  cameraBtn.textContent = '拍照上传';
+  cameraBtn.style.cssText = `
+    flex: 1;
+    height: 45px;
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a5a 100%);
+    color: #fff;
+    border: none;
+    border-radius: 22px;
+    font-size: 16px;
+    font-weight: bold;
+  `;
+  cameraBtn.addEventListener('click', function() {
+    selectImage(true);
+    menuContainer.remove();
+  });
+  btnContainer.appendChild(cameraBtn);
+  
+  const cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '取消';
+  cancelBtn.style.cssText = `
+    width: 100%;
+    height: 45px;
+    background: #f5f5f5;
+    color: #666;
+    border: none;
+    border-radius: 22px;
+    font-size: 16px;
+    margin-top: 10px;
+  `;
+  cancelBtn.addEventListener('click', function() {
+    menuContainer.remove();
+  });
+  
+  menu.appendChild(btnContainer);
+  menu.appendChild(cancelBtn);
+  menuContainer.appendChild(menu);
+  
+  menuContainer.addEventListener('click', function(e) {
+    if (e.target === menuContainer) {
+      menuContainer.remove();
+    }
+  });
+  
+  document.body.appendChild(menuContainer);
+}
+
+function selectImage(useCamera) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  if (useCamera) {
+    input.capture = 'environment';
+  }
+  input.onchange = function(e) {
+    if (e.target.files[0]) {
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const newImage = {
+          title: TITLES[Math.floor(Math.random() * TITLES.length)],
+          imageUrl: event.target.result,
+          likes: 0,
+          user: USERS[Math.floor(Math.random() * USERS.length)],
+          id: Date.now(),
+          loaded: true,
+          img: null
+        };
+        
+        const img = new Image();
+        img.onload = function() {
+          newImage.img = img;
+          images.unshift(newImage);
+          saveImagesToStorage();
+          currentIndex = 0;
+          drawHomeScreen();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(e.target.files[0]);
+      alert('上传成功！');
+    }
+  };
+  input.click();
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
